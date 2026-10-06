@@ -57,11 +57,3 @@ def verify_success_response_with_cart(response: Dict[str, Any], cart: Cart) -> N
         raise HyperPayException(
             f"Mismatch in number of cart items: local={cart.items.count()}, response={len(response_items)}"
         )
-
-
-def truncate_utf8(text: str, max_bytes: int) -> str:
-    """Return text cut to at most max_bytes of UTF-8, never splitting a character."""
-    encoded = (text or '').encode('utf-8')
-    if len(encoded) <= max_bytes:
-        return text or ''
-    return encoded[:max_bytes].decode('utf-8', errors='ignore')

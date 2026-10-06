@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from zeitlabs_payments.models import Cart, CartItem, CatalogueItem
 
 from hyperpay.exceptions import HyperPayException
-from hyperpay.helpers import MANDATORY_FIELDS, truncate_utf8, verify_success_response_with_cart
+from hyperpay.helpers import MANDATORY_FIELDS, verify_success_response_with_cart
 
 
 @pytest.fixture
@@ -127,18 +127,3 @@ def test_cart_items_count_mismatch(cart):  # pylint: disable=redefined-outer-nam
     })
     with pytest.raises(HyperPayException, match='Mismatch in number of cart items'):
         verify_success_response_with_cart(response, cart)
-
-
-@pytest.mark.parametrize('text, max_bytes, expected', [
-    ('short title', 99, 'short title'),
-    ('', 99, ''),
-    (None, 99, ''),
-    ('a' * 120, 99, 'a' * 99),
-    # Arabic letters are 2 bytes each: 99 bytes holds 49 letters, never half of the 50th.
-    ('ب' * 60, 99, 'ب' * 49),
-])
-def test_truncate_utf8(text, max_bytes, expected):
-    """Text is cut to the byte limit at a character boundary."""
-    result = truncate_utf8(text, max_bytes)
-    assert result == expected
-    assert len(result.encode('utf-8')) <= max_bytes
