@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
 from django.http import HttpRequest
 from django.test import TestCase
+from django.urls import reverse
 from zeitlabs_payments.models import AuditLog, Cart, CatalogueItem
 
 from hyperpay.processor import HyperPay, HyperPayMada
@@ -55,6 +56,12 @@ class TestHyperPayProcessor(TestCase):
         assert processor.client.test_mode == 'EXTERNAL'
         assert processor.payment_url == 'https://test-fake-api.nelc.gov.sa/v1/paymentWidgets.js'
         assert processor.return_url == 'https://lms.example.com/hyperpay/return/'
+
+    def test_return_url_carries_processor_slug(self):
+        """Each processor sends HyperPay a return URL naming itself, so the status check can use its entity."""
+        for processor in (HyperPay, HyperPayMada):
+            expected = reverse('hyperpay:processor-return', kwargs={'processor': processor.SLUG})
+            assert processor().return_url.endswith(expected)
 
     def test_get_payment_method_metadata_returns_expected(self):
         """Test get_payment_method_metadata returns correct dict with slug, title, checkout_text, and URL."""

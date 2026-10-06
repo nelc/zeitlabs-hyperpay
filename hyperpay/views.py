@@ -4,7 +4,7 @@ from typing import Any
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction as db_transaction
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -15,7 +15,7 @@ from zeitlabs_payments.models import Cart
 from hyperpay.client import PaymentStatus
 from hyperpay.exceptions import HyperPayException
 from hyperpay.helpers import verify_success_response_with_cart
-from hyperpay.processor import HyperPay
+from hyperpay.processor import HyperPay, HyperPayMada
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,27 @@ logger = logging.getLogger(__name__)
 class HyperPayBaseView(View):
     """Hyperpay Base View."""
 
+    # Each processor has its own HyperPay entity; a checkout is only visible to the entity that created it.
+    PROCESSORS = {processor.SLUG: processor for processor in (HyperPay, HyperPayMada)}
+
+    @property
+    def processor_slug(self) -> str:
+        """Return the slug of the processor that created the checkout (card when the URL carries none)."""
+        slug = self.kwargs.get('processor', HyperPay.SLUG)
+        if slug not in self.PROCESSORS:
+            raise Http404(f'Unknown HyperPay processor: {slug}')
+        return slug
+
     @property
     def payment_processor(self) -> HyperPay:
         """Return processor."""
-        return HyperPay()
+        return self.PROCESSORS[self.processor_slug]()
+
+    def get_status_url(self) -> str:
+        """Return the status URL matching the processor of this request."""
+        if 'processor' in self.kwargs:
+            return reverse('hyperpay:processor-status', kwargs={'processor': self.processor_slug})
+        return reverse('hyperpay:status')
 
 
 @method_decorator(db_transaction.non_atomic_requests, name='dispatch')
@@ -50,7 +67,7 @@ class HyperPayReturnView(HyperPayBaseView):
         data = {}
         data['checkout_id'] = checkout_id
         data['ecommerce_transaction_id'] = checkout_id
-        data['ecommerce_status_url'] = reverse('hyperpay:status')
+        data['ecommerce_status_url'] = self.get_status_url()
         data['ecommerce_error_url'] = reverse(
             'zeitlabs_payments:payment-error',
             args=[checkout_id]
@@ -68,7 +85,7 @@ class HyperPayReturnView(HyperPayBaseView):
 class HyperPayStatusView(LoginRequiredMixin, HyperPayBaseView):
     """View to check transaction and payment status."""
 
-    def get(self, request: Any) -> JsonResponse:
+    def get(self, request: Any, *args: Any, **kwargs: Any) -> JsonResponse:  # pylint: disable=unused-argument
         """Verify transaction status."""
         params = {
             'merchant_reference': request.GET.get('merchant_reference')
