@@ -104,18 +104,18 @@ class TestHyperPayProcessor(TestCase):
         assert result["payment_page_url"].startswith(processor.payment_url)
         assert result["csrfmiddlewaretoken"] == "csrf123"
 
-    def test_get_cart_data_keeps_item_name_within_mada_limit(self):
-        """A long Arabic title is sent to HyperPay cut to 99 bytes; the catalogue title is untouched."""
-        long_title = '\u0628\u0631\u0646\u0627\u0645\u062c ' * 15
-        self.course_item.title = long_title
+    def test_get_cart_data_sends_sku_as_item_name(self):
+        """HyperPay gets the ASCII SKU as the item name, never the (Arabic) title; the title itself is untouched."""
+        title = '\u0628\u0631\u0646\u0627\u0645\u062c \u062a\u062c\u0631\u064a\u0628\u064a'
+        self.course_item.title = title
         self.course_item.save()
 
-        name = HyperPay().get_cart_data(self.cart)['cart.items[0].name']
+        data = HyperPay().get_cart_data(self.cart)
 
-        assert len(name.encode('utf-8')) <= HyperPay.MAX_ITEM_NAME_BYTES
-        assert long_title.startswith(name)
+        assert data['cart.items[0].name'] == self.course_item.sku
+        assert data['cart.items[0].name'].isascii()
         self.course_item.refresh_from_db()
-        assert self.course_item.title == long_title
+        assert self.course_item.title == title
 
     def test_get_cart_from_reference_success(self):
         reference = f'0011-{self.cart.id}'

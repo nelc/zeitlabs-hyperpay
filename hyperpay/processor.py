@@ -13,7 +13,6 @@ from zeitlabs_payments.models import Cart
 from zeitlabs_payments.providers.base import BaseProcessor
 
 from hyperpay.client import HyperPayClient
-from hyperpay.helpers import truncate_utf8
 
 logger = logging.getLogger(__name__)
 empty_hyperpay_settings = {
@@ -34,9 +33,6 @@ class HyperPay(BaseProcessor):
     BRANDS = 'VISA MASTER'
 
     TEMPLATE_NAME = 'hyperpay/hyperpay.html'
-    # MADA (via Postilion) declines a payment whose cart.items[n].name exceeds 99 BYTES (800.100.152,
-    # "cart.items[0].name invalid length"); a 60-letter Arabic title is ~108 bytes. VISA accepts long names.
-    MAX_ITEM_NAME_BYTES = 99
 
     def __init__(self) -> None:
         """Initialize the HyperPay processor with client + config."""
@@ -75,7 +71,10 @@ class HyperPay(BaseProcessor):
         index = 0
         for item in cart.items.all():
             data.update({
-                f'cart.items[{index}].name': truncate_utf8(item.catalogue_item.title, self.MAX_ITEM_NAME_BYTES),
+                # The SKU, not the title: the MADA entity's acquirer ("MADA via Postilion") rejects Arabic item names
+                # as "cart.items[0].name invalid length" (800.100.152) even when cut to 98 bytes, and has only ever
+                # accepted a short ASCII name. SKUs are required, unique and ASCII. Our own pages keep the title.
+                f'cart.items[{index}].name': item.catalogue_item.sku,
                 f'cart.items[{index}].description': item.catalogue_item.description,
                 f'cart.items[{index}].currency': item.catalogue_item.currency,
                 f'cart.items[{index}].sku': item.catalogue_item.sku,
