@@ -125,6 +125,12 @@ class HyperPayClient:
         if result_code and self.SUCCESS_PROCESSED_TRANSACTION_REGEX.match(result_code):
             return data
 
+        # A rejected payment (e.g. 800.100.152 declined by the bank) still carries a payment id and our
+        # merchantTransactionId. Return it so verify_status() classifies it as a decline instead of failing as
+        # "unverifiable". Only rejection codes: any 000.* (pending, manual review) may still mean money moved.
+        if result_code and not result_code.startswith('000.') and data.get('id') and data.get('merchantTransactionId'):
+            return data
+
         logger.error(f'HyperPay checkout status API failed: {data}')
         raise HyperPayException('Unable to verify checkout status.')
 

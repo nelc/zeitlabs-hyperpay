@@ -162,6 +162,35 @@ class TestHyperPayClient(TestCase):
         with pytest.raises(HyperPayException):
             self.client.get_checkout_status({'checkout_id': 'chk_123'})
 
+    @patch('requests.get')
+    def test_get_checkout_status_returns_declined_payment(self, mock_get):
+        """A processed but declined payment is returned so verify_status() can classify it as a failure."""
+        declined = {
+            'id': '8ac9a4a8',
+            'merchantTransactionId': '255-287325',
+            'result': {'code': '800.100.152', 'description': 'transaction declined by authorization system'},
+        }
+        mock_response = Mock()
+        mock_response.json.return_value = declined
+        mock_get.return_value = mock_response
+
+        resp_data = self.client.get_checkout_status('chk_123')
+        assert resp_data == declined
+        assert self.client.verify_status(resp_data) == PaymentStatus.FAILURE
+
+    @data('000.400.010', '000.200.100')
+    @patch('requests.get')
+    def test_get_checkout_status_still_raises_for_non_rejection_codes(self, result_code, mock_get):
+        """Manual-review and pending codes may mean money moved, so they are never reported as a decline."""
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'id': '8ac9a4a8', 'merchantTransactionId': '255-1', 'result': {'code': result_code},
+        }
+        mock_get.return_value = mock_response
+
+        with pytest.raises(HyperPayException):
+            self.client.get_checkout_status('chk_123')
+
     @data(
         ('HTTP error', Exception('500 Server Error'), '500 Server Error'),
         ('Invalid JSON', ValueError('No JSON object could be decoded'), 'No JSON object could be decoded'),

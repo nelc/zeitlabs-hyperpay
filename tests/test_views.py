@@ -44,6 +44,20 @@ class HyperPayReturnView(TestCase):
         response = self.client.get(reverse('hyperpay:return'))
         self.assertTemplateUsed(response, 'zeitlabs_payments/payment_error.html')
 
+    def test_get_with_processor_points_to_matching_status_url(self):
+        """A slugged return URL hands the waiting page the status URL of the same processor."""
+        url = reverse('hyperpay:processor-return', kwargs={'processor': 'hyperpay_mada'})
+        response = self.client.get(f'{url}?id=1234')
+        assert response.context['ecommerce_status_url'] == reverse(
+            'hyperpay:processor-status', kwargs={'processor': 'hyperpay_mada'}
+        )
+
+    def test_get_with_unknown_processor(self):
+        """An unknown processor slug is a 404, never a silent switch to another processor."""
+        url = reverse('hyperpay:processor-return', kwargs={'processor': 'unknown'})
+        response = self.client.get(f'{url}?id=1234')
+        assert response.status_code == 404
+
 
 @pytest.mark.django_db
 class HyperPayStatusViewTest(TestCase):
@@ -178,6 +192,42 @@ class HyperPayStatusViewTest(TestCase):
         )
         self.processing_cart.refresh_from_db()
         assert self.processing_cart.status == Cart.Status.CANCELLED
+
+    @pytest.mark.django_db
+    @patch("hyperpay.client.requests.get")
+    def test_get_declined_payment_returns_decline_message(self, mock_get):
+        """A bank decline reaches the declined branch: JSON message, cart cancelled, no generic error page."""
+        self.client.force_login(self.user)
+        mock_response = Mock()
+        response_data = deepcopy(self.response_template)
+        response_data['result'] = {'code': '800.100.152', 'description': 'transaction declined by authorization system'}
+        mock_response.json.return_value = response_data
+        mock_response.status_code = 200
+        mock_get.return_value = mock_response
+
+        response = self.client.get(f'{self.url}?merchant_reference=1122')
+        assert response.status_code == 400
+        assert response.json()['error'].startswith('Your payment was declined. No charges were made.')
+        self.processing_cart.refresh_from_db()
+        assert self.processing_cart.status == Cart.Status.CANCELLED
+
+    @pytest.mark.django_db
+    @patch("hyperpay.client.HyperPayClient.get_checkout_status", autospec=True)
+    def test_status_uses_the_processor_in_the_url(self, mock_checkout_status):
+        """The status check queries HyperPay with the entity of the processor that created the checkout."""
+        self.client.force_login(self.user)
+        mock_checkout_status.side_effect = HyperPayException('stop after the lookup')
+        for slug in ('hyperpay', 'hyperpay_mada'):
+            url = reverse('hyperpay:processor-status', kwargs={'processor': slug})
+            self.client.get(f'{url}?merchant_reference=1122')
+            client_used = mock_checkout_status.call_args[0][0]
+            assert client_used.slug == slug
+
+    @pytest.mark.django_db
+    def test_status_with_unknown_processor(self):
+        self.client.force_login(self.user)
+        url = reverse('hyperpay:processor-status', kwargs={'processor': 'unknown'})
+        assert self.client.get(f'{url}?merchant_reference=1122').status_code == 404
 
     @pytest.mark.django_db
     @patch("hyperpay.client.HyperPayClient.get_checkout_status")

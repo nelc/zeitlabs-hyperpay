@@ -44,7 +44,10 @@ class HyperPay(BaseProcessor):
             slug=self.SLUG
         )
         self.payment_url = self.processor_settings['payment_url']
-        self.return_url = urljoin(zeitlabs_payments_settings().root_url, reverse("hyperpay:return"))
+        self.return_url = urljoin(
+            zeitlabs_payments_settings().root_url,
+            reverse('hyperpay:processor-return', kwargs={'processor': self.SLUG}),
+        )
 
     def get_processor_settings(self) -> dict:  # pylint: disable=self-use-argument
         """Return processor settings."""
