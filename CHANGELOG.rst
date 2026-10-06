@@ -17,6 +17,10 @@ Unreleased
 Fixed
 =====
 
+* MADA (via Postilion) declined every payment whose ``cart.items[n].name`` exceeds 99 bytes
+  (``800.100.152``, "cart.items[0].name invalid length"), i.e. any Arabic course title over ~49 letters.
+  The item name sent to HyperPay is now cut to 99 UTF-8 bytes at a character boundary; the catalogue
+  title, checkout and invoice keep the full title.
 * MADA payments were verified with the card entity, so HyperPay could not find them: the learner was
   charged but never enrolled. Return and status URLs now carry the processor slug
   (``/hyperpay/<processor>/return/``) and the status check uses that processor's entity. The slug-less
